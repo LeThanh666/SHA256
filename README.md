@@ -50,7 +50,22 @@ Dự án được chia thành các module chính sau:
 * **32 cycles:** Xử lý 64 vòng băm (2 vòng/cycle ở `CALC_ROUNDS`).
 * **1 cycle:** Cộng tích lũy (Davies-Meyer) và xuất cờ `digest_valid` (`DONE`).
 * **Tổng cộng:** **36 Clock Cycles**.
+## ⚡ Hiệu suất phần cứng (Post-Implementation Timing)
 
+Hiệu suất của lõi SHA-256 được đánh giá dựa trên kết quả phân tích thời gian tĩnh (STA) thực tế từ công cụ tổng hợp (Synthesis/Implementation). Với kiến trúc Unrolled-by-2, mạch chỉ tiêu tốn tổng cộng **36 chu kỳ xung nhịp** để hoàn thành toàn bộ quá trình đóng gói và băm cho 1 block 512-bit.
+
+**Thông số Timing thực tế (Target Clock: 100 MHz / 10 ns):**
+* **WNS (Worst Negative Slack):** +0.833 ns (Timing Passed)
+* **Minimum Clock Period ($T_{min}$):** 9.167 ns
+* **Maximum Frequency ($F_{max}$):** ~109.08 MHz
+
+**Công thức tính Max Throughput cực đại:**
+> **Throughput = (Block_Size * Fmax) / Total_Cycles_per_Block**
+
+Áp dụng thông số Fmax thực tế vào mạch:
+* **Max Throughput** = (512 bits * 109.08 MHz) / 36 cycles ≈ **1,551 Mbps (~1.55 Gbps)**
+
+*(Lưu ý: Kết quả có thể thay đổi nhẹ tùy thuộc vào dòng chip FPGA mục tiêu và chiến lược tối ưu hóa Routing của công cụ).*
 ## 🚀 Hướng dẫn Mô phỏng (Simulation)
 
 File Testbench (`tb_sha256_top.v`) được thiết kế để đọc dữ liệu từ một file văn bản ngoại vi (`input.txt`) và bón dữ liệu trực tiếp vào mạch với tốc độ cực đại.
