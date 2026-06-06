@@ -3,6 +3,7 @@
 [![FIPS 180-4](https://img.shields.io/badge/Standard-FIPS%20180--4-blue.svg)](https://csrc.nist.gov/publications/detail/fips/180/4/final)
 [![Language](https://img.shields.io/badge/Language-Verilog%20HDL-orange.svg)]()
 [![Architecture](https://img.shields.io/badge/Architecture-Unrolled--by--2-success.svg)]()
+[![Throughput](https://img.shields.io/badge/Max%20Throughput-~1.42%20Gbps-red.svg)]()
 
 Dự án này là một bộ tăng tốc phần cứng (Hardware Accelerator) cho thuật toán băm mật mã **SHA-256**, được mô tả bằng ngôn ngữ phần cứng Verilog HDL. Hệ thống được thiết kế tối ưu hóa về mặt tốc độ (High Throughput) với kiến trúc lõi **Unrolled-by-2** và giao thức truyền dữ liệu **Back-to-back**.
 
@@ -10,12 +11,29 @@ Dự án này là một bộ tăng tốc phần cứng (Hardware Accelerator) ch
 
 * **Tuân thủ chuẩn FIPS 180-4:** Hỗ trợ đầy đủ thuật toán SHA-256 với kích thước block 512-bit và digest 256-bit.
 * **Auto-Padding FSM:** Tích hợp sẵn bộ điều khiển thông điệp (Message Controller) có khả năng tự động đệm dữ liệu (padding) theo chuẩn. Hỗ trợ mượt mà cả 3 kịch bản padding:
-  * Tin nhắn $\le$ 55 byte (1 Block).
+  * Tin nhắn <= 55 byte (1 Block).
   * Tin nhắn từ 56 đến 63 byte (2 Blocks - Trạng thái `STATE_EMIT_LASTA`).
   * Tin nhắn đúng 64 byte (2 Blocks).
 * **Kiến trúc lõi Unrolled-by-2:** Tính toán đồng thời 2 vòng băm (rounds) trong cùng 1 chu kỳ xung nhịp. Giảm số chu kỳ của vòng lặp chính từ 64 xuống chỉ còn **32 chu kỳ**.
 * **Hiệu suất cực đại (Maximum Throughput):** Tổng thời gian xử lý cố định cho mỗi block chỉ mất đúng **36 chu kỳ clock**.
 * **Giao tiếp Back-to-back:** Hỗ trợ nhận dữ liệu liên tục 1 byte / 1 clock cycle không có chu kỳ chết (Zero Idle Cycles) khi mạch đang ở trạng thái rảnh (`in_ready = 1`).
+
+## ⚡ Hiệu suất phần cứng (Fmax & Throughput)
+
+Thông lượng (Throughput) của lõi SHA-256 này được tính toán dựa trên khả năng xử lý một khối dữ liệu 512-bit. Với kiến trúc Unrolled-by-2, mạch chỉ tiêu tốn tổng cộng **36 chu kỳ xung nhịp** để hoàn thành toàn bộ quá trình đóng gói và băm cho 1 block.
+
+Công thức tính Max Throughput:
+> **Throughput = (Block_Size * Fmax) / Total_Cycles_per_Block**
+
+Trong đó:
+* **Block_Size:** 512 bits
+* **Total_Cycles_per_Block:** 36 cycles
+
+**Ví dụ trên tần số mô phỏng (100 MHz):**
+Nếu tổng hợp mạch trên FPGA đạt Fmax = 100 MHz (Clock period = 10ns):
+* Throughput = (512 bits * 100 MHz) / 36 cycles ≈ **1,422 Mbps (~1.42 Gbps)**
+
+*(Lưu ý: Tần số Fmax thực tế sẽ phụ thuộc vào dòng chip FPGA mục tiêu - ví dụ Xilinx Artix-7, Zynq, v.v. - và chiến lược tối ưu hóa Synthesize/Implementation của công cụ Vivado/Quartus).*
 
 ## 📐 Kiến trúc hệ thống
 
@@ -23,13 +41,12 @@ Dự án được chia thành các module chính sau:
 
 1. `sha256_top.v`: Module Top-level, quản lý giao tiếp tổng thể và đồng bộ dữ liệu.
 2. `sha_message_controller.v`: Máy trạng thái (FSM) quản lý bộ đệm 512-bit, tự động thêm bit `1`, padding các bit `0` và chèn 64-bit độ dài thông điệp ở cuối.
-3. `sha_core.v`: Lõi toán học SHA-256. Thực hiện mở rộng thông điệp (Message Expansion) và chạy 64 vòng băm thông qua các hàm logic ($Maj, Ch, \Sigma, \sigma$).
+3. `sha_core.v`: Lõi toán học SHA-256. Thực hiện mở rộng thông điệp (Message Expansion) và chạy 64 vòng băm thông qua các hàm logic (Maj, Ch, Sigma, sigma).
 
 ### Phân tích Timing (36 Cycles / Block)
-Với kiến trúc Unrolled, lõi phần cứng tiêu tốn một lượng chu kỳ cố định và tối ưu cho mỗi block 512-bit:
 * **1 cycle:** Padding & Đóng gói block.
 * **1 cycle:** Latch dữ liệu vào Top và khởi động Core.
-* **1 cycle:** Khởi tạo $a \rightarrow h$ và mồi dữ liệu (`CALC_WK`).
+* **1 cycle:** Khởi tạo các thanh ghi biến trạng thái a-h và mồi dữ liệu (`CALC_WK`).
 * **32 cycles:** Xử lý 64 vòng băm (2 vòng/cycle ở `CALC_ROUNDS`).
 * **1 cycle:** Cộng tích lũy (Davies-Meyer) và xuất cờ `digest_valid` (`DONE`).
 * **Tổng cộng:** **36 Clock Cycles**.
@@ -47,7 +64,7 @@ File Testbench (`tb_sha256_top.v`) được thiết kế để đọc dữ liệ
 
 ### Tính toán chu kỳ mô phỏng (Ví dụ với tin nhắn 1 Block)
 Testbench đã được tối ưu hóa để ép đường truyền chạy liên tục (Back-to-back), do đó công thức tính tổng số chu kỳ từ lúc nạp byte đầu tiên đến khi có kết quả băm là:
-> **Total Cycles = N + 36** *(Trong đó N là số byte của tin nhắn, $N \le 55$)*
+> **Total Cycles = N + 36** *(Trong đó N là số byte của tin nhắn, N <= 55)*
 
 *Ví dụ: Nạp chuỗi `Hello World!` (12 bytes) sẽ tiêu tốn chính xác `12 + 36 = 48 chu kỳ clock`.*
 
